@@ -1,6 +1,7 @@
 from fixedint import UInt16, UInt32
 from typing import Iterable
 
+
 class BigInt:
     is_negative: bool
     values: list[UInt16] =[]
@@ -116,6 +117,57 @@ class BigInt:
             i-=1
         self.values = self.values[:i+1]
 
+    def r_shift(self, n: int):
+        if n<0: return self.l_shift(-n)
+        words = n >> 4 #n/16
+
+        if words >= len(self.values):
+            return BigInt([UInt16(0)])
+
+        in_word = n & 0xf #n%16
+
+        in_word_mask = (1 << in_word) - 1
+
+        vals = self.values[words:]
+        print(words, in_word, self.values)
+        #only if in_word != 0 otherwise nop
+        if in_word:
+            for i in range(len(vals) - 1):
+                dword = UInt32(vals[i]) + (UInt32(vals[i+1]) << BigInt.RADIX_SHIFT)
+                vals[i] = UInt16(dword >> in_word)
+            vals[-1] = UInt16(vals[-1] >> in_word)
+        res = BigInt(vals, self.is_negative) 
+        res.trim()
+        print(res.values, res.abs_compare(BigInt([UInt16(0)])))
+        if res.abs_compare(BigInt([UInt16(0)])) == 0:
+            res.is_negative = False
+        return  res
+
+    def l_shift(self, n: int):
+        if n < 0: return self.r_shift(-n)
+        
+        words = n >> 4 #n/16
+        in_word = n & 15 #n%16
+
+        in_word_mask = ((1 << in_word) - 1) << (BigInt.RADIX_SHIFT - in_word)
+        # print(words, in_word, self.values)
+        vals = [UInt16(0) for _ in range(words)] + self.values
+        # print(vals, in_word)
+        #only if in_word != 0 otherwise nop
+        if in_word:
+            carry = 0
+            for i in range(words, len(vals)):
+                # print(vals[i], vals[i] << in_word, carry)
+                nvals = UInt16((vals[i] << in_word) + carry)
+                carry = (vals[i] & in_word_mask) >> (BigInt.RADIX_SHIFT - in_word) 
+                vals[i] = nvals
+                # print(carry, vals[i])
+            if carry != 0:
+                vals.append(UInt16(carry))
+        return BigInt(vals, self.is_negative)
+
+
+
     def simple_mul(self, oth):
         #^ - xor
         sign = self.is_negative^oth.is_negative
@@ -153,6 +205,9 @@ class BigInt:
         res.is_negative = sign 
         res.trim()
         return res
+
+    # def karatsuba(self, oth):
+
     __mul__ = simple_mul
 
     @staticmethod
