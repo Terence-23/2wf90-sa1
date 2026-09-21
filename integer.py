@@ -9,22 +9,22 @@ class BigInt:
     RADIX_MASK = (1<<16)-1
     
     DIGITS ={
-            '0':0,
-            '1':1,
-            '2':2,
-            '3':3,
-            '4':4,
-            '5':5,
-            '6':6,
-            '7':7,
-            '8':8,
-            '9':9,
-            'A':10,
-            'B':11,
-            'C':12,
-            'D':13,
-            'E':14,
-            'F':15
+            '0':UInt16(0),
+            '1':UInt16(1),
+            '2':UInt16(2),
+            '3':UInt16(3),
+            '4':UInt16(4),
+            '5':UInt16(5),
+            '6':UInt16(6),
+            '7':UInt16(7),
+            '8':UInt16(8),
+            '9':UInt16(9),
+            'A':UInt16(10),
+            'B':UInt16(11),
+            'C':UInt16(12),
+            'D':UInt16(13),
+            'E':UInt16(14),
+            'F':UInt16(15)
             }
 
     #|self| > |oth|
@@ -153,9 +153,35 @@ class BigInt:
         res.is_negative = sign 
         res.trim()
         return res
+    __mul__ = simple_mul
 
-    def from_radix(self, radix: int, num:str):
-        pass
+    @staticmethod
+    def from_radix(radix: int, num:str):
+        if radix > 16 or radix <2:
+            raise ValueError(f"Radix must be in range [2;16] is: {radix}")
+        exp = BigInt([UInt16(1)])
+        res = BigInt([UInt16(0)])
+        _radix = BigInt([UInt16(radix)])
+        if num[0] == '-':
+            num = num[1:]
+            is_negative =True
+        else:
+            is_negative = False
+        num = num.upper()
+
+        for d in num[::-1]:
+            val = BigInt.DIGITS.get(d, None)
+            if val == None or val >= radix:
+                raise ValueError(f"Not a valid digit: {d}")
+            res = res + BigInt([val]) * exp
+            exp = exp.simple_mul(_radix)
+
+        res.is_negative = is_negative
+        #remove -0
+        if (len(res.values) ==1 and res.values[0] == UInt16(0)):
+            res.is_negative = False
+        return res
+
 
 def long_zip(*args, zero=UInt16(0)):
 
