@@ -51,11 +51,18 @@ class BigInt:
     def neg(self):
         self.is_negative = not self.is_negative
 
+    def debug_str(self):
+        return f"{'-' if self.is_negative else ''}{self.values}"
+
+
     def add(self, oth: BigInt):
+        print(self.debug_str(), oth.debug_str())
         #handle signs
         if self.is_negative != oth.is_negative:
+            print("add diff signs")
+
             oth.neg()
-            self.sub(oth)
+            return self.sub(oth)
         #both have the same sign
 
         #add
@@ -64,14 +71,23 @@ class BigInt:
         carry = UInt32(0)
         for x, y in long_zip(self.values, oth.values):
             res = UInt32(x) + UInt32(y) + UInt32(carry)
-            added.append(res & self.RADIX_MASK)
+            added.append(UInt16(res & self.RADIX_MASK))
             carry = res >> self.RADIX_SHIFT
+            print(f"adding {len(added)} digits: {x}, {y} = {added[-1]} + {carry} * {BigInt.RADIX}")
 
+        if carry > 0:
+            added.append(UInt16(carry))
+        
         return BigInt(added, self.is_negative)
+    
+    __add__ = add 
+
     def sub(self, oth: BigInt):
+        print(self.debug_str(), oth.debug_str())
         if self.is_negative != oth.is_negative:
+            print("sub diff signs")
             oth.neg()
-            self.sub(oth)
+            return self.add(oth)
         #both have the same sign
         
         #ensure |self| > |oth|
@@ -83,37 +99,40 @@ class BigInt:
             is_negative = not is_negative
             self, oth = oth,self
 
+        print(self.debug_str(), oth.debug_str())
         #add
         l =  max(len(self.values), len(oth.values))
         added =[]
         carry = UInt32(0)
         for x, y in long_zip(self.values, oth.values):
-            res = UInt32(x) - UInt32(y) - UInt32(carry)
-            while (res < 0):
-                carry+=1
-                res+=self.RADIX
+            x = UInt32(x)
+            last_carry = carry
+            carry = 0
+            while x < (y + last_carry):
+                carry+=1 
+                x+= self.RADIX
+            res = x - UInt32(y) - UInt32(last_carry)
             added.append(res & self.RADIX_MASK)
-
+            print(f"subing {len(added)} digits: {x}, {y} = {added[-1]} - {carry} * {BigInt.RADIX}")
+        print("end_sub")
         return BigInt(added, is_negative)
+
+    __sub__ = sub
 
     def from_radix(self, radix: int, num:str):
         pass
 
 def long_zip(*args, zero=UInt16(0)):
 
+    print(args)
+
     def get(l: list, ind: int):
-        if len(l) >= ind: return zero
+        if len(l) <= ind: return zero
         else: return l[ind]
 
     length = max(len(x) for x in args)
     
     return (tuple((get(x, i) for x in args )) for i in range(length))
 
-
-def test():
-    pass
-
-if __name__ == "__main__":
-    test()
 
 
