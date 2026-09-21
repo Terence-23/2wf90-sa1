@@ -56,24 +56,20 @@ class BigInt:
 
 
     def add(self, oth: BigInt):
-        print(self.debug_str(), oth.debug_str())
         #handle signs
         if self.is_negative != oth.is_negative:
-            print("add diff signs")
 
             oth.neg()
             return self.sub(oth)
         #both have the same sign
 
         #add
-        l =  max(len(self.values), len(oth.values))
         added =[]
         carry = UInt32(0)
         for x, y in long_zip(self.values, oth.values):
             res = UInt32(x) + UInt32(y) + UInt32(carry)
             added.append(UInt16(res & self.RADIX_MASK))
             carry = res >> self.RADIX_SHIFT
-            print(f"adding {len(added)} digits: {x}, {y} = {added[-1]} + {carry} * {BigInt.RADIX}")
 
         if carry > 0:
             added.append(UInt16(carry))
@@ -83,9 +79,7 @@ class BigInt:
     __add__ = add 
 
     def sub(self, oth: BigInt):
-        print(self.debug_str(), oth.debug_str())
         if self.is_negative != oth.is_negative:
-            print("sub diff signs")
             oth.neg()
             return self.add(oth)
         #both have the same sign
@@ -94,14 +88,12 @@ class BigInt:
         is_negative = self.is_negative
         cmp = self.abs_compare(oth)
         if cmp ==0:
-            return BigInt([])
+            return BigInt([UInt16(0)])
         if cmp < 0:
             is_negative = not is_negative
             self, oth = oth,self
 
-        print(self.debug_str(), oth.debug_str())
-        #add
-        l =  max(len(self.values), len(oth.values))
+        #subtraction
         added =[]
         carry = UInt32(0)
         for x, y in long_zip(self.values, oth.values):
@@ -113,8 +105,6 @@ class BigInt:
                 x+= self.RADIX
             res = x - UInt32(y) - UInt32(last_carry)
             added.append(res & self.RADIX_MASK)
-            print(f"subing {len(added)} digits: {x}, {y} = {added[-1]} - {carry} * {BigInt.RADIX}")
-        print("end_sub")
         return BigInt(added, is_negative)
 
     __sub__ = sub

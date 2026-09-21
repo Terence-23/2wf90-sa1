@@ -27,11 +27,9 @@ def mk(*limbs, neg=False):
 
 def to_int(b: BigInt) -> int:
     """Reference conversion for comparing results, independent of internal repr."""
-    print(b.values)
     val = 0
     for i, limb in enumerate(int(x) for x in b.values):
         val += limb << (RADIX_SHIFT * i)
-    print(val)
     return -val if b.is_negative and val != 0 else val
 
 
