@@ -109,12 +109,56 @@ class BigInt:
 
     __sub__ = sub
 
+
+    def trim(self):
+        i = len(self.values) -1
+        while i > 0 and self.values[i] == 0:
+            i-=1
+        self.values = self.values[:i+1]
+
+    def simple_mul(self, oth):
+        #^ - xor
+        sign = self.is_negative^oth.is_negative
+        
+        intermediate = []
+
+        #make intermediate
+        for i1, a in enumerate(self.values):
+            digits = [UInt32(0) for _ in range(len(self.values) + len(oth.values) + 2)]
+            for i2, b in enumerate(oth.values):
+                lo_ind = i1+i2
+                res = UInt32(a) * UInt32(b) + digits[lo_ind]
+                hi = UInt32(res >> BigInt.RADIX_SHIFT)
+                lo = UInt32(res & BigInt.RADIX_MASK)
+                digits[lo_ind] = lo
+                digits[lo_ind+1] += hi
+
+            #carry all digits
+            carry = 0
+            new_digits = [UInt16(0) for _ in range(len(digits))]
+            for i, d in enumerate(digits):
+                new_d = d+carry
+                lo = UInt16(new_d & BigInt.RADIX_MASK)
+                carry = UInt16(new_d >> BigInt.RADIX_SHIFT)
+                new_digits[i] = lo
+            intermediate.append(BigInt(new_digits))
+
+
+        res = BigInt([UInt16(0)])
+        #add intermediate
+        
+        for x in intermediate:
+            res = res + x
+
+        res.is_negative = sign 
+        res.trim()
+        return res
+
     def from_radix(self, radix: int, num:str):
         pass
 
 def long_zip(*args, zero=UInt16(0)):
 
-    print(args)
 
     def get(l: list, ind: int):
         if len(l) <= ind: return zero
