@@ -49,7 +49,7 @@ class BigInt:
         self.is_negative = is_negative
         self.values = values;
 
-    def neg(self):
+    def neg_mut(self):
         self.is_negative = not self.is_negative
 
     def debug_str(self):
@@ -59,8 +59,7 @@ class BigInt:
     def add(self, oth: BigInt):
         #handle signs
         if self.is_negative != oth.is_negative:
-
-            oth.neg()
+            oth.neg_mut()
             return self.sub(oth)
         #both have the same sign
 
@@ -81,7 +80,7 @@ class BigInt:
 
     def sub(self, oth: BigInt):
         if self.is_negative != oth.is_negative:
-            oth.neg()
+            oth.neg_mut()
             return self.add(oth)
         #both have the same sign
         
@@ -106,9 +105,16 @@ class BigInt:
                 x+= self.RADIX
             res = x - UInt32(y) - UInt32(last_carry)
             added.append(res & self.RADIX_MASK)
-        return BigInt(added, is_negative)
+
+        res =BigInt(added, is_negative)
+        res.trim()
+        return res
 
     __sub__ = sub
+
+    def neg(self):
+        return BigInt(self.values[::], not self.is_negative)
+    __neg__ = neg
 
 
     def trim(self):
@@ -209,6 +215,59 @@ class BigInt:
     # def karatsuba(self, oth):
 
     __mul__ = simple_mul
+
+    def div(self, other):
+        first = BigInt(self.values, self.is_negative)
+        oth = BigInt(other.values, other.is_negative)
+        sign = first.is_negative ^ oth.is_negative
+        
+        if oth.abs_compare(BigInt([UInt16(0)])) == 0:
+            raise ZeroDivisionError()
+        if first.abs_compare(BigInt([UInt16(0)])) == 0:
+            return BigInt([UInt16(0)])
+
+        i = 0
+        while oth.abs_compare(first) < 0:
+            i+=1
+            oth = oth.l_shift(1)
+
+        first.is_negative = False
+        oth.is_negative = False
+        res = BigInt([UInt16(0)])
+        while i >= 0:
+            # print(self.debug_str(), '/ ', oth.debug_str())
+            if first.abs_compare(oth) >= 0:
+                first = first - oth
+                # print("new_self: ", self.debug_str())
+                res = res + BigInt([UInt16(1)]).l_shift(i)
+
+            oth = oth.r_shift(1)
+            i -= 1
+
+        if res.abs_compare(BigInt([UInt16(0)])) != 0:
+            res.is_negative = sign
+
+        return res 
+
+    __floordiv__ = div
+
+    def mod(self, oth):
+        
+        if oth.abs_compare(BigInt([UInt16(0)])) == 0:
+            raise ZeroDivisionError()
+        print(self.debug_str(), "mod", oth.debug_str())
+        quot = self // oth
+        print("q: ", quot.debug_str())
+        qb = quot * oth
+        print("qb: ", qb.debug_str(), self.debug_str())
+
+        rem = self - qb
+        print("rem:", rem.debug_str())
+        if rem.is_negative:
+            rem = rem + oth
+        return rem
+        
+    __mod__ = mod
 
     @staticmethod
     def from_radix(radix: int, num:str):
