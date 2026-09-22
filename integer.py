@@ -251,7 +251,7 @@ class BigInt:
 
     __floordiv__ = div
 
-    def mod(self, oth):
+    def divmod(self, oth):
         
         if oth.abs_compare(BigInt([UInt16(0)])) == 0:
             raise ZeroDivisionError()
@@ -265,8 +265,11 @@ class BigInt:
         print("rem:", rem.debug_str())
         if rem.is_negative:
             rem = rem + oth
-        return rem
+        return quot, rem
         
+    def mod(self, oth):
+        return self.divmod(oth)[1]
+
     __mod__ = mod
 
     @staticmethod
