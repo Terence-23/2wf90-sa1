@@ -1,5 +1,6 @@
 """
-Standalone multiplication tests for a base-2^16 limb BigInt, using simple_mul.
+Standalone multiplication tests for a base-2^16 limb BigInt.
+Runs the full suite against both simple_mul and karatsuba.
 No pytest required -- just run: python test_bigint_mul.py
 
 Assumes:
@@ -25,10 +26,16 @@ RADIX_SHIFT = 16
 
 
 
-def mul(a: BigInt, b: BigInt) -> BigInt:
-    """Wrapper around simple_mul so the call site is adjustable in one place."""
-    return a.simple_mul(b)
+MULTIPLIERS = {
+    "simple": lambda a, b: a.simple_mul(b),
+    "karatsuba": lambda a, b: a.karatsuba(b),
+}
+_current = "simple"
 
+
+def mul(a: BigInt, b: BigInt) -> BigInt:
+    """Dispatches to whichever multiplication is currently under test."""
+    return MULTIPLIERS[_current](a, b)
 
 
 def mk(*limbs, neg=False):
@@ -188,6 +195,69 @@ def test_mul_small_random_cross_check():
         assert_equal_value(result, x * y)
 
 
+
+# ---------------------------------------------------------------------------
+# Karatsuba-specific tests (split / recombination stress)
+# ---------------------------------------------------------------------------
+
+def test_mul_unbalanced_sizes():
+    random.seed(7)
+    for small_bits, big_bits in [(16, 400), (17, 300), (32, 640), (100, 101)]:
+        for _ in range(10):
+            x = random.getrandbits(small_bits) * random.choice([-1, 1])
+            y = random.getrandbits(big_bits) * random.choice([-1, 1])
+            assert_equal_value(mul(from_int(x), from_int(y)), x * y)
+
+
+def test_mul_all_ones_limbs_various_lengths():
+    # RADIX**k - 1 maximizes carries in every partial product
+    for k in range(1, 20):
+        x = (1 << (16 * k)) - 1
+        assert_equal_value(mul(from_int(x), from_int(x)), x * x)
+        assert_equal_value(mul(from_int(-x), from_int(x)), -x * x)
+
+
+def test_mul_zero_low_or_high_halves():
+    # low half all zero / high half all zero after the split
+    x = 1 << (16 * 8)
+    y = (1 << (16 * 8)) + 5
+    assert_equal_value(mul(from_int(x), from_int(y)), x * y)
+    assert_equal_value(mul(from_int(5), from_int(y)), 5 * y)
+
+
+def test_mul_odd_and_even_limb_counts():
+    random.seed(11)
+    for n in range(1, 25):
+        x = random.getrandbits(16 * n) | (1 << (16 * n - 1))
+        y = random.getrandbits(16 * n) | (1 << (16 * n - 1))
+        assert_equal_value(mul(from_int(x), from_int(y)), x * y)
+
+
+def test_mul_very_large_random():
+    random.seed(2024)
+    for _ in range(10):
+        x = random.randint(-(1 << 2000), 1 << 2000)
+        y = random.randint(-(1 << 2000), 1 << 2000)
+        assert_equal_value(mul(from_int(x), from_int(y)), x * y)
+
+
+def test_mul_commutative_and_agrees_with_simple():
+    random.seed(5)
+    for _ in range(20):
+        x = random.randint(-(1 << 600), 1 << 600)
+        y = random.randint(-(1 << 600), 1 << 600)
+        a, b = from_int(x), from_int(y)
+        assert to_int(a.karatsuba(b)) == to_int(a.simple_mul(b))
+        assert to_int(a.karatsuba(b)) == to_int(b.karatsuba(a))
+
+
+def test_karatsuba_does_not_mutate_operands():
+    x, y = (1 << 500) + 12345, -((1 << 480) + 999)
+    a, b = from_int(x), from_int(y)
+    a.karatsuba(b)
+    assert_equal_value(a, x)
+    assert_equal_value(b, y)
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -211,36 +281,42 @@ ALL_TESTS = [
     test_mul_powers_of_two,
     test_mul_large_random_cross_check,
     test_mul_small_random_cross_check,
+    test_mul_unbalanced_sizes,
+    test_mul_all_ones_limbs_various_lengths,
+    test_mul_zero_low_or_high_halves,
+    test_mul_odd_and_even_limb_counts,
+    test_mul_very_large_random,
+]
+
+# only meaningful once both methods exist
+CROSS_TESTS = [
+    test_mul_commutative_and_agrees_with_simple,
+    test_karatsuba_does_not_mutate_operands,
 ]
 
 
 def run_all():
-    passed = 0
-    failed = 0
-    failures = []
-
-    for test_fn in ALL_TESTS:
-        name = test_fn.__name__
-        try:
-            test_fn()
-        except Exception as e:
-            failed += 1
-            failures.append((name, e, traceback.format_exc()))
-            print(f"FAIL  {name}: {e}")
-        else:
-            passed += 1
-            print(f"PASS  {name}")
-
-    print()
-    print(f"{passed} passed, {failed} failed out of {len(ALL_TESTS)} tests")
-
-    if failures:
-        print("\n--- Failure details ---")
+    global _current
+    total_failed = 0
+    for impl in MULTIPLIERS:
+        _current = impl
+        tests = ALL_TESTS + (CROSS_TESTS if impl == "karatsuba" else [])
+        passed, failures = 0, []
+        print(f"\n=== {impl} ===")
+        for fn in tests:
+            try:
+                fn()
+            except Exception as e:
+                failures.append((fn.__name__, e, traceback.format_exc()))
+                print(f"FAIL  {fn.__name__}: {e}")
+            else:
+                passed += 1
+                print(f"PASS  {fn.__name__}")
+        print(f"{passed} passed, {len(failures)} failed out of {len(tests)}")
         for name, e, tb in failures:
-            print(f"\n{name}:")
-            print(tb)
-
-    return failed == 0
+            print(f"\n{name}:\n{tb}")
+        total_failed += len(failures)
+    return total_failed == 0
 
 
 if __name__ == "__main__":

@@ -60,7 +60,9 @@ class BigInt:
         #handle signs
         if self.is_negative != oth.is_negative:
             oth.neg_mut()
-            return self.sub(oth)
+            val = self.sub(oth)
+            oth.neg_mut()
+            return val
         #both have the same sign
 
         #add
@@ -81,7 +83,9 @@ class BigInt:
     def sub(self, oth: BigInt):
         if self.is_negative != oth.is_negative:
             oth.neg_mut()
-            return self.add(oth)
+            val = self.add(oth)
+            oth.neg_mut()
+            return val
         #both have the same sign
         
         #ensure |self| > |oth|
@@ -98,13 +102,13 @@ class BigInt:
         carry = UInt32(0)
         for x, y in long_zip(self.values, oth.values):
             x = UInt32(x)
-            last_carry = carry
+            last_carry = UInt32(carry)
             carry = 0
             while x < (y + last_carry):
                 carry+=1 
                 x+= self.RADIX
             res = x - UInt32(y) - UInt32(last_carry)
-            added.append(res & self.RADIX_MASK)
+            added.append(UInt16(res & self.RADIX_MASK))
 
         res =BigInt(added, is_negative)
         res.trim()
@@ -135,7 +139,7 @@ class BigInt:
         in_word_mask = (1 << in_word) - 1
 
         vals = self.values[words:]
-        print(words, in_word, self.values)
+        # print(words, in_word, self.values)
         #only if in_word != 0 otherwise nop
         if in_word:
             for i in range(len(vals) - 1):
@@ -144,7 +148,7 @@ class BigInt:
             vals[-1] = UInt16(vals[-1] >> in_word)
         res = BigInt(vals, self.is_negative) 
         res.trim()
-        print(res.values, res.abs_compare(BigInt([UInt16(0)])))
+        # print(res.values, res.abs_compare(BigInt([UInt16(0)])))
         if res.abs_compare(BigInt([UInt16(0)])) == 0:
             res.is_negative = False
         return  res
@@ -212,9 +216,53 @@ class BigInt:
         res.trim()
         return res
 
-    # def karatsuba(self, oth):
 
-    __mul__ = simple_mul
+
+    @staticmethod
+    def _trimmed(values, is_negative: bool = False) -> "BigInt":
+        x = BigInt(list(values) if len(values) else [UInt16(0)], False)
+        x.trim()                       # your in-place trim: zero -> [0]
+        if x.values == [0]:            # zero is never negative
+            return x
+        x.is_negative = is_negative
+        return x
+
+    def _is_zero(self) -> bool:
+        return all(int(v) == 0 for v in self.values)
+
+    BITS = RADIX_SHIFT
+    MASK = RADIX_MASK
+
+    def karatsuba(self, other: BigInt) -> BigInt:
+        a = BigInt._trimmed(self.values)
+        b = BigInt._trimmed(other.values)
+        negative = self.is_negative != other.is_negative
+
+        if a._is_zero() or b._is_zero():
+            return BigInt([UInt16(0)], False)
+
+        la, lb = len(a.values), len(b.values)
+
+        if la == 1 and lb == 1:
+            p = int(a.values[0]) * int(b.values[0])
+            return BigInt._trimmed([UInt16(p & self.MASK), UInt16(p >> self.BITS)], negative)
+
+        m = (max(la, lb) + 1) // 2
+        s = self.BITS * m
+
+        a0 = BigInt._trimmed(a.values[:m])
+        a1 = BigInt._trimmed(a.values[m:])
+        b0 = BigInt._trimmed(b.values[:m])
+        b1 = BigInt._trimmed(b.values[m:])
+
+        z0 = a0.karatsuba(b0)
+        z2 = a1.karatsuba(b1)
+        z1 = z0 + z2 - (a0 - a1).karatsuba(b0 - b1)
+
+        product = z0 + z1.l_shift(s) + z2.l_shift(2 * s)
+        return BigInt._trimmed(product.values, negative)
+
+    __mul__ = karatsuba
 
     def div(self, other):
         first = BigInt(self.values, self.is_negative)
@@ -255,14 +303,14 @@ class BigInt:
         
         if oth.abs_compare(BigInt([UInt16(0)])) == 0:
             raise ZeroDivisionError()
-        print(self.debug_str(), "mod", oth.debug_str())
+        # print(self.debug_str(), "mod", oth.debug_str())
         quot = self // oth
-        print("q: ", quot.debug_str())
+        # print("q: ", quot.debug_str())
         qb = quot * oth
-        print("qb: ", qb.debug_str(), self.debug_str())
+        # print("qb: ", qb.debug_str(), self.debug_str())
 
         rem = self - qb
-        print("rem:", rem.debug_str())
+        # print("rem:", rem.debug_str())
         if rem.is_negative:
             rem = rem + oth
         return quot, rem
