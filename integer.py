@@ -1,5 +1,4 @@
 from fixedint import UInt16, UInt32
-from typing import Iterable
 
 
 class BigInt:
@@ -328,7 +327,7 @@ class BigInt:
     __mod__ = mod
 
     @staticmethod
-    def from_radix(radix: int, num:str):
+    def from_radix_old(radix: int, num:str):
         if radix > 16 or radix <2:
             raise ValueError(f"Radix must be in range [2;16] is: {radix}")
         exp = BigInt([UInt16(1)])
@@ -346,18 +345,96 @@ class BigInt:
             if val == None or val >= radix:
                 raise ValueError(f"Not a valid digit: {d}")
             res = res + BigInt([val]) * exp
-            exp = exp.simple_mul(_radix)
+            exp = exp*(_radix)
 
         res.is_negative = is_negative
         #remove -0
         if (len(res.values) ==1 and res.values[0] == UInt16(0)):
             res.is_negative = False
         return res
+        
 
     @staticmethod
-    def EEA(a: BigInt, b: BigInt):
-        if a < b: a,b=b,a
+    def from_radix(radix: int, num: str):
+        if radix > 16 or radix < 2:
+            raise ValueError(f"Radix must be in range [2;16] is: {radix}")
+
+        is_negative = num.startswith('-')
+        if is_negative:
+            num = num[1:]
+        num = num.upper()
+
+        # validate + convert to plain ints once
+        digits = []
+        for d in num:
+            v = BigInt.DIGITS.get(d)
+            if v is None or v >= radix:
+                raise ValueError(f"Not a valid digit: {d}")
+            digits.append(int(v))
+
+        # largest k with radix**k <= 0xFFFF
+        k = 1
+        while radix ** (k + 1) <= 0xFFFF:
+            k += 1
+
+        limbs = [0]  # little endian, plain ints
+        for i in range(0, len(digits), k):
+            chunk = digits[i:i + k]
+            mult = radix ** len(chunk)       # last chunk may be shorter
+            carry = 0
+            for v in chunk:                  # value of chunk, < 2^16
+                carry = carry * radix + v
+
+            # limbs = limbs * mult + carry, in place, one pass
+            for j in range(len(limbs)):
+                t = limbs[j] * mult + carry  # always < 2^32
+                limbs[j] = t & 0xFFFF
+                carry = t >> 16
+            if carry:
+                limbs.append(carry)
+
+        res = BigInt([UInt16(x) for x in limbs])
+        res.is_negative = is_negative and not (len(limbs) == 1 and limbs[0] == 0)
+        return res
+
+    @staticmethod
+    def EEA(x, y):
+
+        a = BigInt(x.values)
+        b = BigInt(y.values)
+        if a.abs_compare(b) < 0: 
+            a,b=b,a
+            swap =True
+        else: 
+            swap = False
+        d, u,v =BigInt._EEA(a,b)
+
+
+        if swap:
+            u, v= v, u
+
+        if x.is_negative:
+            u.neg_mut()
+        if y.is_negative:
+            v.neg_mut()
+
+        return d, u, v
+
+    @staticmethod
+    def _EEA(a: BigInt, b: BigInt):
+
+        if b.abs_compare(BigInt.ZERO) == 0:
+            return a, BigInt([UInt16(1)]), BigInt([UInt16(0)])
+        q,r = a.divmod(b)
+        d, u, v = BigInt._EEA(b,r)
+
+        return d, v, u - q*v
         
+    def mod_inv(self, m):
+        d, inv,_ = BigInt.EEA(self, m)
+        if d.abs_compare(BigInt([UInt16(1)])) != 0:
+            raise ValueError(f"gcd of {self.debug_str()}, {m.debug_str} is {d.debug_str} not 1, no modular inverse")
+        return inv
 
 
 
