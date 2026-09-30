@@ -254,6 +254,15 @@ def test_eea_coprime_random_cross_check():
         check_eea(n, n + 1)
 
 
+def test_eea_beyond_recursion_limit():
+    import sys
+
+    a, b = 0, 1
+    for _ in range(sys.getrecursionlimit() + 10):
+        a, b = b, a + b
+    check_eea(a, b)
+
+
 # ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
@@ -287,6 +296,7 @@ ALL_TESTS = [
     test_eea_large_random_cross_check,
     test_eea_small_random_cross_check,
     test_eea_coprime_random_cross_check,
+    test_eea_beyond_recursion_limit,
 ]
 
 

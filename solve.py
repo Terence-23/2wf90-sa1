@@ -123,7 +123,4 @@ def solve_exercise(exercise_location: str, answer_location: str):
 # Please do not *run* code outside this block
 # You can however define other functions or constants
 if __name__ == '__main__':
-    # to avoid using sys.setrecursionlimit
-    import ctypes
-    ctypes.pythonapi.Py_SetRecursionLimit(ctypes.c_int(4000))
     solve_exercise('Simple/Exercises/exercise0.json', 'Simple/Answers/answer0.json')

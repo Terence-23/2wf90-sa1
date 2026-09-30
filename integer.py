@@ -306,79 +306,12 @@ class BigInt:
 
         return quot, rem
 
-
-    def divmod_old(self, other):
-        first = BigInt(self.values[::], self.is_negative)
-        oth = BigInt(other.values[::], other.is_negative)
-        sign = first.is_negative ^ oth.is_negative
-        # print(first.debug_str(),'\n', oth.debug_str())
-        if oth.abs_compare(BigInt([UInt16(0)])) == 0:
-            raise ZeroDivisionError()
-        if first.abs_compare(self.ZERO) == 0:
-            return BigInt([UInt16(0)]), BigInt([UInt16(0)])
-
-        i = 0
-        while oth.abs_compare(first) < 0:
-            i+=1
-            oth = oth.l_shift(1)
-
-        first.is_negative = False
-        oth.is_negative = False
-        res = BigInt([UInt16(0)])
-        while i >= 0:
-            # print(self.debug_str(), '/ ', oth.debug_str())
-            if first.abs_compare(oth) >= 0:
-                first = first - oth
-                # print("new_self: ", self.debug_str())
-                res = res + BigInt([UInt16(1)]).l_shift(i)
-
-            oth = oth.r_shift(1)
-            i -= 1
-
-        if res.abs_compare(self.ZERO) != 0:
-            res.is_negative = sign
-        if first.abs_compare(self.ZERO) == 0:
-            return (res,first)
-        first.is_negative = self.is_negative
-        # print(first.debug_str(), first < BigInt([UInt16(0)]))
-        if first < self.ZERO:
-            first = first + other
-            # print(first.debug_str())
-
-        return (res, first) 
         
     def mod(self, oth):
         return self.divmod(oth)[1]
 
     __mod__ = mod
 
-    @staticmethod
-    def from_radix_old(radix: int, num:str):
-        if radix > 16 or radix <2:
-            raise ValueError(f"Radix must be in range [2;16] is: {radix}")
-        exp = BigInt([UInt16(1)])
-        res = BigInt([UInt16(0)])
-        _radix = BigInt([UInt16(radix)])
-        if num[0] == '-':
-            num = num[1:]
-            is_negative =True
-        else:
-            is_negative = False
-        num = num.upper()
-
-        for d in num[::-1]:
-            val = BigInt.DIGITS.get(d, None)
-            if val == None or val >= radix:
-                raise ValueError(f"Not a valid digit: {d}")
-            res = res + BigInt([val]) * exp
-            exp = exp*(_radix)
-
-        res.is_negative = is_negative
-        #remove -0
-        if (len(res.values) ==1 and res.values[0] == UInt16(0)):
-            res.is_negative = False
-        return res
-        
 
     @staticmethod
     def from_radix(radix: int, num: str):
@@ -471,21 +404,32 @@ class BigInt:
 
     @staticmethod
     def _EEA(a, b):
-        if len(b.values) == 1 and b.values[0] == 0:             # cheap zero test
-            return a, BigInt([UInt16(1)]), BigInt([UInt16(0)])  # fresh objects (see note)
+        """ Track Bezout coefficients for both remainders; each Euclidean step updates them with the same quotient
+        until a holds the gcd.
+        """
+        u, next_u = BigInt([UInt16(1)]), BigInt([UInt16(0)])
+        v, next_v = BigInt([UInt16(0)]), BigInt([UInt16(1)])
 
-        q, r = BigInt._divmod_nonneg(a, b)
-        d, u, v = BigInt._EEA(b, r)
+        while not (len(b.values) == 1 and b.values[0] == 0):
+            q, r = BigInt._divmod_nonneg(a, b)
+            # Avoid full multiplication whenever q fits in one limb.
+            if len(q.values) == 1:
+                k = q.values[0]
+                if k == 0:
+                    u, next_u = next_u, u
+                    v, next_v = next_v, v
+                elif k == 1:
+                    u, next_u = next_u, u - next_u
+                    v, next_v = next_v, v - next_v
+                else:
+                    u, next_u = next_u, u - BigInt._mul_limb(next_u, k)
+                    v, next_v = next_v, v - BigInt._mul_limb(next_v, k)
+            else:
+                u, next_u = next_u, u - q * next_u
+                v, next_v = next_v, v - q * next_v
+            a, b = b, r
 
-        # u - q*v, avoiding a full multiplication whenever q is small
-        if len(q.values) == 1:
-            k = q.values[0]
-            if k == 0:
-                return d, v, u
-            if k == 1:
-                return d, v, u - v
-            return d, v, u - BigInt._mul_limb(v, k)
-        return d, v, u - q * v
+        return a, u, v
         
     def mod_inv(self, m):
         d, inv,_ = BigInt.EEA(self, m)
