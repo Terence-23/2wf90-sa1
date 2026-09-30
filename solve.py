@@ -9,7 +9,7 @@
 #
 # Author names and student IDs:
 # Jerzy Puchalski 2253461
-# author_name_2 (author_student_ID_2)
+# Filip Cuciuc 1659626
 # author_name_3 (author_student_ID_3)
 # author_name_4 (author_student_ID_4)
 ##

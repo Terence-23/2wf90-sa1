@@ -1,3 +1,4 @@
+from __future__ import annotations
 from fixedint import UInt16, UInt32
 
 
@@ -231,7 +232,7 @@ class BigInt:
 
 
     @staticmethod
-    def _trimmed(values, is_negative: bool = False) -> "BigInt":
+    def _trimmed(values, is_negative: bool = False) -> BigInt:
         x = BigInt(list(values) if len(values) else [UInt16(0)], False)
         x.trim()                       # your in-place trim: zero -> [0]
         if x.values == [0]:            # zero is never negative
@@ -471,7 +472,7 @@ class BigInt:
 
     @staticmethod
     def _EEA(a, b):
-        if len(b.values) == 1 and b.values[0] == 0:          # cheap zero test
+        if len(b.values) == 1 and b.values[0] == 0:             # cheap zero test
             return a, BigInt([UInt16(1)]), BigInt([UInt16(0)])  # fresh objects (see note)
 
         q, r = BigInt._divmod_nonneg(a, b)
