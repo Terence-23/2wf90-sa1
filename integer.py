@@ -1,4 +1,3 @@
-from __future__ import annotations
 from fixedint import UInt16, UInt32
 
 
@@ -69,7 +68,7 @@ class BigInt:
         return f"{'-' if self.is_negative else ''}{self.values}"
 
 
-    def add(self, oth: BigInt):
+    def add(self, oth: "BigInt"):
         #handle signs
         if self.is_negative != oth.is_negative:
             oth.neg_mut()
@@ -93,7 +92,7 @@ class BigInt:
     
     __add__ = add 
 
-    def sub(self, oth: BigInt):
+    def sub(self, oth: "BigInt"):
         if self.is_negative != oth.is_negative:
             oth.neg_mut()
             val = self.add(oth)
@@ -232,7 +231,7 @@ class BigInt:
 
 
     @staticmethod
-    def _trimmed(values, is_negative: bool = False) -> BigInt:
+    def _trimmed(values, is_negative: bool = False) -> "BigInt":
         x = BigInt(list(values) if len(values) else [UInt16(0)], False)
         x.trim()                       # your in-place trim: zero -> [0]
         if x.values == [0]:            # zero is never negative
@@ -246,7 +245,7 @@ class BigInt:
     BITS = RADIX_SHIFT
     MASK = RADIX_MASK
 
-    def karatsuba(self, other: BigInt) -> BigInt:
+    def karatsuba(self, other: "BigInt") -> "BigInt":
         a = BigInt._trimmed(self.values)
         b = BigInt._trimmed(other.values)
         negative = self.is_negative != other.is_negative
