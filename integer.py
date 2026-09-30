@@ -281,7 +281,33 @@ class BigInt:
 
     __floordiv__ = div
 
+
     def divmod(self, other):
+        a = BigInt(self.values[:], False);  a.trim()
+        b = BigInt(other.values[:], False); b.trim()   # b is now |other|
+
+        if all(x == 0 for x in b.values):
+            raise ZeroDivisionError()
+
+        q, r = _divmod_limbs(a.values, b.values)
+        quot = BigInt(q, False); quot.trim()
+        rem  = BigInt(r, False); rem.trim()
+
+        q_zero = all(x == 0 for x in quot.values)
+        r_zero = all(x == 0 for x in rem.values)
+
+        # quotient: truncated toward zero, negative iff the signs differ
+        if self.is_negative != other.is_negative and not q_zero:
+            quot.is_negative = True
+
+        # remainder: always in [0, |b|). For a negative dividend, reflect it
+        if self.is_negative and not r_zero:
+            rem = b - rem                      # both non-negative, result in (0, |b|)
+
+        return quot, rem
+
+
+    def divmod_old(self, other):
         first = BigInt(self.values[::], self.is_negative)
         oth = BigInt(other.values[::], other.is_negative)
         sign = first.is_negative ^ oth.is_negative
@@ -421,20 +447,51 @@ class BigInt:
         return d, u, v
 
     @staticmethod
-    def _EEA(a: BigInt, b: BigInt):
+    def _mul_limb(v, k):
+        """|v| * k where 0 <= k < 2^16, all math within 32 bits."""
+        k = UInt32(k)
+        out, carry = [], ZERO
+        for limb in v.values:
+            p = w(limb) * k + carry            # <= 0xFFFF*0xFFFF + 0xFFFF < 2^32
+            out.append(UInt16(p & MASK))
+            carry = p >> 16
+        if carry:
+            out.append(UInt16(carry))
+        res = BigInt(out, v.is_negative)
+        res.trim()
+        return res
 
-        if b.abs_compare(BigInt.ZERO) == 0:
-            return a, BigInt([UInt16(1)]), BigInt([UInt16(0)])
-        q,r = a.divmod(b)
-        d, u, v = BigInt._EEA(b,r)
+    @staticmethod
+    def _divmod_nonneg(a, b):
+        """a, b non-negative, trimmed, b != 0. Skips the copies and sign logic."""
+        q, r = _divmod_limbs(a.values, b.values)
+        quot = BigInt(q, False); quot.trim()
+        rem = BigInt(r, False);  rem.trim()
+        return quot, rem
 
-        return d, v, u - q*v
+    @staticmethod
+    def _EEA(a, b):
+        if len(b.values) == 1 and b.values[0] == 0:          # cheap zero test
+            return a, BigInt([UInt16(1)]), BigInt([UInt16(0)])  # fresh objects (see note)
+
+        q, r = BigInt._divmod_nonneg(a, b)
+        d, u, v = BigInt._EEA(b, r)
+
+        # u - q*v, avoiding a full multiplication whenever q is small
+        if len(q.values) == 1:
+            k = q.values[0]
+            if k == 0:
+                return d, v, u
+            if k == 1:
+                return d, v, u - v
+            return d, v, u - BigInt._mul_limb(v, k)
+        return d, v, u - q * v
         
     def mod_inv(self, m):
         d, inv,_ = BigInt.EEA(self, m)
         if d.abs_compare(BigInt([UInt16(1)])) != 0:
             raise ValueError(f"gcd of {self.debug_str()}, {m.debug_str} is {d.debug_str} not 1, no modular inverse")
-        return inv
+        return inv % m
 
 
 
@@ -452,3 +509,94 @@ def long_zip(*args, zero=UInt16(0)):
 
 
 BigInt.ZERO = BigInt([UInt16(0)])
+
+
+
+ZERO = UInt32(0)
+ONE = UInt32(1)
+w= UInt32
+MASK = BigInt.RADIX_MASK
+BASE = BigInt.RADIX
+
+
+def _divmod_limbs(a, b):
+    """a, b: trimmed little-endian UInt16 lists, b != 0.
+    Returns (q, r) as UInt16 lists; the caller trims them."""
+    n, m = len(b), len(a)
+
+    # |a| < |b|: quotient is 0, remainder is a (copied to avoid aliasing)
+    if m < n or (m == n and a[::-1] < b[::-1]):
+        return [UInt16(0)], a[:]
+
+    # Single-limb divisor: short division, (rem << 16) | limb fits in UInt32
+    if n == 1:
+        d, rem = w(b[0]), ZERO
+        q = [UInt16(0)] * m
+        for i in range(m - 1, -1, -1):
+            cur = (rem << 16) | w(a[i])
+            q[i] = UInt16(cur // d)
+            rem = cur % d
+        return q, [UInt16(rem)]
+
+    # D1: normalize so the divisor's top bit is set
+    s = 16 - int(b[-1]).bit_length()
+
+    def shl(x, extra):
+        out, carry = [], ZERO
+        for limb in x:
+            t = (w(limb) << s) | carry
+            out.append(UInt16(t & MASK))
+            carry = t >> 16
+        if extra:
+            out.append(UInt16(carry))
+        return out
+
+    v = shl(b, False)
+    u = shl(a, True)                       # len m + 1
+    q = [UInt16(0)] * (m - n + 1)
+    vn1, vn2 = w(v[n - 1]), w(v[n - 2])
+
+    for j in range(m - n, -1, -1):
+        # D3: estimate qhat from the top two limbs of the current remainder
+        num = (w(u[j + n]) << 16) | w(u[j + n - 1])
+        qhat, rhat = num // vn1, num % vn1
+        # short-circuiting keeps qhat * vn2 and rhat << 16 inside 32 bits;
+        # do not reorder this condition
+        while rhat < BASE and (qhat >= BASE or
+                               qhat * vn2 > ((rhat << 16) | w(u[j + n - 2]))):
+            qhat -= ONE
+            rhat += vn1
+
+        # D4: u[j..j+n] -= qhat * v
+        borrow = carry = ZERO
+        for i in range(n):
+            p = qhat * w(v[i]) + carry     # <= 0xFFFF*0xFFFF + 0xFFFF < 2^32
+            carry = p >> 16
+            sub = (p & MASK) + borrow      # <= 0x10000
+            ui = w(u[i + j])
+            borrow = ONE if ui < sub else ZERO
+            u[i + j] = UInt16((ui - sub) & MASK)   # wraps; low 16 bits correct
+        sub = carry + borrow
+        ui = w(u[j + n])
+        negative = ui < sub
+        u[j + n] = UInt16((ui - sub) & MASK)
+
+        # D5/D6: qhat was one too big, add the divisor back
+        if negative:
+            qhat -= ONE
+            c = ZERO
+            for i in range(n):
+                t = w(u[i + j]) + w(v[i]) + c      # <= 0x1FFFF
+                u[i + j] = UInt16(t & MASK)
+                c = t >> 16
+            u[j + n] = UInt16((w(u[j + n]) + c) & MASK)
+        q[j] = UInt16(qhat)
+
+    # D8: un-normalize the remainder (s == 0 needs no special case:
+    # the << 16 bits are masked away)
+    r = []
+    for i in range(n):
+        lo = w(u[i]) >> s
+        hi = (w(u[i + 1]) << (16 - s)) & MASK
+        r.append(UInt16(lo | hi))
+    return q, r

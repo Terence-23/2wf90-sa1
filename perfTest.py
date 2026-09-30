@@ -19,7 +19,7 @@ from integer import BigInt            # for the static BigInt.EEA(x, y) call
 LIMIT = 5.0            # seconds, per single operation
 MAX_VAL = 10 ** 500    # operands up to this, for add/sub/mul/mod-reduce/mod-add/mod-sub/mod-mul
 MAX_VAL_INV = 10 ** 250  # operands up to this, for mod inv (and EEA, once ready)
-TRIALS = 5             # random trials per operation (worst time is reported)
+TRIALS = 10             # random trials per operation (worst time is reported)
 random.seed(2024)
 
 # ---------------------------------------------------------------------------
@@ -97,7 +97,6 @@ def inputs_for(name, kind, trial, bound=MAX_VAL):
 def run_op(name, kind, call, ref, bound=MAX_VAL):
     worst = 0.0
     for trial in range(TRIALS):
-        print(0)
         py = inputs_for(name, kind, trial, bound)
         big = tuple(from_int(v) for v in py)
         t0 = time.perf_counter()
@@ -213,6 +212,36 @@ def main():
         ok[0] &= t <= LIMIT
         print(f"{'eea':<18}{t:>11.4f}s   {status}")
 
+    print("Worst case EEA (fib(2000)): ")
+
+    sys.setrecursionlimit(4000)
+
+    def fib(n):
+        if n < 1:
+            return []
+        if n< 2:
+            return [0]
+        if n < 3:
+            return [0,1]
+        fib = [0,1] + [0]*(n-2)
+        for i in range(2, n):
+            fib[i] = (fib[i-1]+ fib[i-2])
+
+        return fib
+
+
+    a = fib(2000)[-2:]
+
+    import time
+    from mulTest import from_int
+
+    a = [from_int(x) for x in a]
+    t0 = time.perf_counter()
+    BigInt.EEA(*a)
+    elapsed = time.perf_counter()- t0
+
+    print("Takes: ", elapsed, "s", sep='')
+
     # mod_inv must reject x that has no inverse mod m (gcd(x, m) != 1)
     try:
         run_mod_inv_nonexistent()
@@ -229,7 +258,7 @@ def main():
     # Scaling: karatsuba should overtake school multiplication as size grows.
     print("\nScaling (school vs karatsuba, one multiplication each):")
     print(f"{'digits':>8}{'school':>12}{'karatsuba':>12}")
-    for digits in (100, 250, 500, 1000, 2000):
+    for digits in (100, 250, 500, 1000, 2000, 4000):
         x, y = from_int(random.randrange(10 ** digits)), from_int(random.randrange(10 ** digits))
         t0 = time.perf_counter(); x.simple_mul(y); ts = time.perf_counter() - t0
         t0 = time.perf_counter(); x.karatsuba(y); tk = time.perf_counter() - t0
