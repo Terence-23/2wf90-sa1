@@ -9,6 +9,8 @@ class BigInt:
     RADIX_SHIFT =16
     RADIX_MASK = (1<<16)-1
     
+    ZERO=0
+    
     DIGITS ={
             '0':UInt16(0),
             '1':UInt16(1),
@@ -44,6 +46,17 @@ class BigInt:
             if y > x: return -1
 
         return 0
+    
+    def __lt__(self, oth):
+        if self.is_negative:
+            if not oth.is_negative:
+                return True
+            return self.abs_compare(oth) == 1
+        else:
+            if oth.is_negative:
+                return False
+            return self.abs_compare(oth) == -1
+
 
     def __init__(self, values: list[UInt16], is_negative: bool = False):
         self.is_negative = is_negative
@@ -132,7 +145,7 @@ class BigInt:
         words = n >> 4 #n/16
 
         if words >= len(self.values):
-            return BigInt([UInt16(0)])
+            return self.ZERO
 
         in_word = n & 0xf #n%16
 
@@ -265,14 +278,19 @@ class BigInt:
     __mul__ = karatsuba
 
     def div(self, other):
-        first = BigInt(self.values, self.is_negative)
-        oth = BigInt(other.values, other.is_negative)
+        return self.divmod(other)[0]
+
+    __floordiv__ = div
+
+    def divmod(self, other):
+        first = BigInt(self.values[::], self.is_negative)
+        oth = BigInt(other.values[::], other.is_negative)
         sign = first.is_negative ^ oth.is_negative
-        
+        # print(first.debug_str(),'\n', oth.debug_str())
         if oth.abs_compare(BigInt([UInt16(0)])) == 0:
             raise ZeroDivisionError()
-        if first.abs_compare(BigInt([UInt16(0)])) == 0:
-            return BigInt([UInt16(0)])
+        if first.abs_compare(self.ZERO) == 0:
+            return BigInt([UInt16(0)]), BigInt([UInt16(0)])
 
         i = 0
         while oth.abs_compare(first) < 0:
@@ -292,28 +310,17 @@ class BigInt:
             oth = oth.r_shift(1)
             i -= 1
 
-        if res.abs_compare(BigInt([UInt16(0)])) != 0:
+        if res.abs_compare(self.ZERO) != 0:
             res.is_negative = sign
+        if first.abs_compare(self.ZERO) == 0:
+            return (res,first)
+        first.is_negative = self.is_negative
+        # print(first.debug_str(), first < BigInt([UInt16(0)]))
+        if first < self.ZERO:
+            first = first + other
+            # print(first.debug_str())
 
-        return res 
-
-    __floordiv__ = div
-
-    def divmod(self, oth):
-        
-        if oth.abs_compare(BigInt([UInt16(0)])) == 0:
-            raise ZeroDivisionError()
-        # print(self.debug_str(), "mod", oth.debug_str())
-        quot = self // oth
-        # print("q: ", quot.debug_str())
-        qb = quot * oth
-        # print("qb: ", qb.debug_str(), self.debug_str())
-
-        rem = self - qb
-        # print("rem:", rem.debug_str())
-        if rem.is_negative:
-            rem = rem + oth
-        return quot, rem
+        return (res, first) 
         
     def mod(self, oth):
         return self.divmod(oth)[1]
@@ -347,6 +354,12 @@ class BigInt:
             res.is_negative = False
         return res
 
+    @staticmethod
+    def EEA(a: BigInt, b: BigInt):
+        if a < b: a,b=b,a
+        
+
+
 
 def long_zip(*args, zero=UInt16(0)):
 
@@ -361,3 +374,4 @@ def long_zip(*args, zero=UInt16(0)):
 
 
 
+BigInt.ZERO = BigInt([UInt16(0)])
