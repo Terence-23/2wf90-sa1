@@ -61,7 +61,8 @@ def solve_exercise(exercise_location: str, answer_location: str):
     answer_location might not exist yet and, hence, might still need to be created.
     """
     # to avoid using sys.setrecursionlimit
-    ctypes.pythonapi.Py_SetRecursionLimit(ctypes.c_int(4000))
+    # dont override recursion limit
+    # ctypes.pythonapi.Py_SetRecursionLimit(ctypes.c_int(4000))
  
     # Open file at exercise_location for reading.
     with open(exercise_location, "r") as exercise_file:
